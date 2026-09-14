@@ -39,11 +39,10 @@ export class Creature extends Sprite {
             this.state = st;
             if (this.state == CreatureState.DYING) {
                 this.setVelocity(0, 0);
-                const facingAnim = this.currAnimName.toLowerCase();
-                if (facingAnim.includes("left")) {
+                if (this.currAnimName == "left") {
                     this.setAnimation("deadLeft");
                 }
-                if (facingAnim.includes("right")) {
+                if (this.currAnimName == "right") {
                     this.setAnimation("deadRight");
                 }
             }
@@ -61,7 +60,12 @@ export class Creature extends Sprite {
     }
 
     update(deltaTime: number) {
-        const newAnim = this.getDesiredAnimation();
+        let newAnim = "";
+        if (this.velocity.x < 0) {
+            newAnim = "left";
+        } else if (this.velocity.x > 0) {
+            newAnim = "right";
+        }
         if (newAnim != "" && newAnim != this.currAnimName) {
             this.setAnimation(newAnim);
         } else {
@@ -71,18 +75,6 @@ export class Creature extends Sprite {
         if (this.state == CreatureState.DYING && this.stateTime > this.DIE_TIME) {
             this.setState(CreatureState.DEAD);
         }
-    }
-
-    // Subclasses (e.g. Player) override this to prioritize animations other
-    // than plain left/right movement (jumping, dashing, etc.) without
-    // duplicating the death-state/frame-timing bookkeeping above.
-    getDesiredAnimation(): string {
-        if (this.velocity.x < 0) {
-            return "left";
-        } else if (this.velocity.x > 0) {
-            return "right";
-        }
-        return "";
     }
 }
 
