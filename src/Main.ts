@@ -54,4 +54,7 @@ export function keyPressed() {
     if (keyCode == ESCAPE) {
         game.toggleFullScreen();
     }
+    if (keyCode == ENTER) {
+        game.toggleFullScreen();
+    }
 }
