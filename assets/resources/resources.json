@@ -48,6 +48,24 @@
 		        {"img":"player2", "operators":["mirror","flip"], "duration":150},
 		        {"img":"player3", "operators":["mirror","flip"], "duration":200},
 		        {"img":"player2", "operators":["mirror","flip"], "duration":150}
+            ],
+            "jumpLeft": [
+                {"img":"playerJump1", "duration":150},
+                {"img":"playerJump2", "duration":150}
+            ],
+            "jumpRight": [
+                {"img":"playerJump1", "operators":["mirror"], "duration":150},
+                {"img":"playerJump2", "operators":["mirror"], "duration":150}
+            ],
+            "dashLeft": [
+                {"img":"playerDash1", "duration":60},
+                {"img":"playerDash2", "duration":60},
+                {"img":"playerDash3", "duration":60}
+            ],
+            "dashRight": [
+                {"img":"playerDash1", "operators":["mirror"], "duration":60},
+                {"img":"playerDash2", "operators":["mirror"], "duration":60},
+                {"img":"playerDash3", "operators":["mirror"], "duration":60}
             ]
         },
         "music": {

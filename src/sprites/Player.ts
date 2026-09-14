@@ -81,6 +81,16 @@ export class Player extends Creature {
         }
     }
 
+    getDesiredAnimation(): string {
+        if (this.isDashing()) {
+            return this.facing < 0 ? "dashLeft" : "dashRight";
+        }
+        if (!this.onGround) {
+            return this.facing < 0 ? "jumpLeft" : "jumpRight";
+        }
+        return super.getDesiredAnimation();
+    }
+
     setPosition(x: number, y: number) {
         //check if falling
         if (Math.round(y) > Math.round(this.position.y)) {
