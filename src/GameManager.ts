@@ -128,9 +128,10 @@ export class GameManager {
         if (this.dash.isBeginPress() && this.map.player.getState() == CreatureState.NORMAL) {
             this.map.player.dash();
         }
-        if (this.stop.isBeginPress()) {
-            throw new Error("STOP"); //for testing purposes only
-        }
+        // commented out so users don't crash game on live version
+        // if (this.stop.isBeginPress()) {
+        //     throw new Error("STOP"); //for testing purposes only
+        // }
     }
 
     toggleFullScreen() {
