@@ -234,19 +234,24 @@ export class GameMap {
         for (const s of overlapping) {
             if (p.getState() != CreatureState.NORMAL) break; // player already died this call
             if (s instanceof Creature) {
-                if (isFalling) {
+                if (p.isDashing()) {
+                    // Dash kill: destroys on contact from any direction, no
+                    // bounce/reposition -- the player just powers through
+                    // and keeps their dash trajectory. Checked before
+                    // isFalling: dash() never touches vertical velocity, so
+                    // gravity keeps accruing during a mid-air dash and
+                    // isFalling can go true a couple of frames in -- without
+                    // this ordering that would misfire the stomp branch
+                    // (bounce + reposition) on top of an active dash.
+                    this.killCreature(s);
+                    this.soundManager.playEvent("boop2");
+                } else if (isFalling) {
                     // Stomp kill: bounce off the top.
                     const pos = s.getPosition();
                     this.killCreature(s);
                     this.soundManager.playEvent("boop2");
                     p.setPosition(p.getPosition().x, pos.y - p.getImage().height);
                     p.jump(true);
-                } else if (p.isDashing()) {
-                    // Dash kill: destroys on contact from any direction, no
-                    // bounce/reposition -- the player just powers through
-                    // and keeps their dash trajectory.
-                    this.killCreature(s);
-                    this.soundManager.playEvent("boop2");
                 } else {
                     this.killCreature(p);
                 }
@@ -327,6 +332,15 @@ export class GameMap {
             }
             p.update(deltaTime);
             if (target || p.hitSomething || p.isExpired()) {
+                // Same "explosion" Explosion-type resource used for
+                // player/caveman death (see killCreature()) -- plays once in
+                // place, no physics, and self-removes from this.sprites (see
+                // update()'s Explosion branch) once its animation finishes.
+                // On a hit, center it on the enemy rather than the
+                // projectile - isCollision() only requires overlap, not an
+                // exact position match, so the two can differ slightly.
+                const pos = target ? target.getPosition() : p.getPosition();
+                this.spawnEffect("explosion", pos.x, pos.y);
                 toRemove.push(p);
             }
         });
@@ -425,11 +439,17 @@ export class GameMap {
         //    (instead of re-deriving falling state from a single frame's
         //    motion) avoids misreading a stationary side-bump as a stomp on
         //    whichever frame happens to catch that flicker.
+        // airborneStreak alone only says "not freshly grounded" -- it stays
+        // true for the whole jump arc, ascending included. Without also
+        // requiring oldVel.y > 0 (still moving downward this frame, after
+        // gravity/collideVertical()), jumping up into the underside of an
+        // enemy was being treated as a stomp: it bounced the player and
+        // killed the enemy exactly as if landing on top of it.
         if (s instanceof Player) {
             const player = s as Player;
             this.checkPlayerCollision(
                 player,
-                player.airborneStreak >= Player.AIRBORNE_ANIM_MIN_STREAK
+                player.airborneStreak >= Player.AIRBORNE_ANIM_MIN_STREAK && oldVel.y > 0
             );
         }
     }

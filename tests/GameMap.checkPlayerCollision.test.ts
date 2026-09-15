@@ -131,6 +131,29 @@ describe("GameMap.checkPlayerCollision() dash kill", () => {
         expect(map.soundManager.playEvent).toHaveBeenCalledWith("boop2");
     });
 
+    it("a mid-air dash kill takes priority over a stomp even when isFalling is also true", () => {
+        // Regression: dash() never touches vertical velocity, so gravity
+        // keeps accruing during a mid-air dash and GameMap.updateSprite()
+        // can compute isFalling=true a couple of frames into the dash.
+        // Dashing into an enemy should still be a clean pass-through kill,
+        // not a stomp bounce+reposition on top of the active dash.
+        const map = makeGameMap();
+        const player = withMockImage(new Player(), 16, 16);
+        player.setPosition(300, 100);
+        player.dash();
+        const jumpSpy = vi.spyOn(player, "jump");
+
+        const grub = withMockImage(new Grub(), 16, 16);
+        grub.setPosition(300, 100);
+        map.sprites.push(grub);
+
+        map.checkPlayerCollision(player, true); // isFalling=true, as updateSprite would compute mid-air
+
+        expect(grub.getState()).toBe(CreatureState.DYING);
+        expect(jumpSpy).not.toHaveBeenCalled();
+        expect(player.getState()).toBe(CreatureState.NORMAL);
+    });
+
     it("a dash kill still spawns the creature's death effect, same as a stomp kill", () => {
         // Regression guard for the merge with main's fire-ability branch:
         // checkPlayerCollision's dash-kill branch must go through

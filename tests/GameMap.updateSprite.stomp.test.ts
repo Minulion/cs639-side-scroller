@@ -61,4 +61,21 @@ describe("GameMap.updateSprite() stomp vs. side-hit classification (running-jump
         expect(player.getState()).toBe(CreatureState.DYING);
         expect(grub.getState()).toBe(CreatureState.NORMAL);
     });
+
+    it("kills the player, not the enemy, when jumping up into the underside of an enemy", () => {
+        // airborneStreak alone stays high for the whole jump arc, ascending
+        // included -- it's only meant to rule out the one-frame grounded
+        // flicker, not to signal "is falling." Without also requiring
+        // downward velocity, bumping an enemy's underside while still rising
+        // registered as a stomp: same bounce, same enemy kill as landing on
+        // top of it.
+        const grub = makeGrub(200, 300); // column x:[200,264], y:[300,364]
+        const player = makePlayer(200, 360, 0, -0.5, 5); // directly beneath, jumping straight up into it
+
+        const map = makeMap([grub]);
+        map.updateSprite(player);
+
+        expect(player.getState()).toBe(CreatureState.DYING);
+        expect(grub.getState()).toBe(CreatureState.NORMAL);
+    });
 });
