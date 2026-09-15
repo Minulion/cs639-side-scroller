@@ -2,6 +2,7 @@ import { Player } from "./sprites/Player.js";
 import { Fly, Grub, Creature } from "./sprites/Creature.js";
 import { Heart, Music, PowerUp, Star } from "./sprites/PowerUp.js";
 import { Sprite } from "./sprites/Sprite.js";
+import { Explosion } from "./sprites/Explosion.js";
 
 export class ResourceManager {
     assets: object;
@@ -156,6 +157,10 @@ export class ResourceManager {
                 s = new Music();
                 break;
             }
+            case "Explosion": {
+                s = new Explosion();
+                break;
+            }
             default: {
                 console.error("No Sprite Type:", spriteType);
                 throw new Error();
@@ -171,6 +176,18 @@ export class ResourceManager {
             s.drawOffsetY = 3;
         } else if (spriteName === "grub") {
             s.drawOffsetY = 3;
+        }
+        // "player" and "caveman" disappear on death and spawn a separate
+        // explosion effect in their place instead (see GameMap and
+        // Creature.explodesOnDeath). "grub" and "fly" instead spawn a
+        // bugjuice splat alongside themselves -- they keep falling/tumbling
+        // through their own death animation unchanged (explodesOnDeath
+        // stays false for them).
+        if (spriteName === "player" || spriteName === "caveman") {
+            (s as Creature).deathEffect = "explosion";
+            (s as Creature).explodesOnDeath = true;
+        } else if (spriteName === "grub" || spriteName === "fly") {
+            (s as Creature).deathEffect = "bugjuice";
         }
         for (const animName in anims) {
             if (Object.prototype.hasOwnProperty.call(anims, animName)) {

@@ -102,6 +102,12 @@ export class Sprite {
 
     addAnimation(name: string) {
         this.animations[name] = new Animation();
+        // Defaults to looping (see the Animation constructor) -- e.g.
+        // grub/fly's own flipped deadLeft/deadRight cycle continuously for
+        // their whole death pause, same as their living walk cycle. A
+        // sprite that should play an animation once instead (see
+        // Explosion) overrides addAnimation() to set loop=false itself,
+        // rather than this being inferred from the animation's name.
         //this.currAnimName=name;
         //this.currAnimation=this.animations[name];
     }
@@ -127,8 +133,18 @@ export class Sprite {
         if (this.currAnimation.frames.length > 1) {
             this.currAnimation.animTime += elapsedTime;
             if (this.currAnimation.animTime >= this.currAnimation.totalDuration) {
-                this.currAnimation.animTime %= this.currAnimation.totalDuration;
-                this.currAnimation.currFrameIndex = 0;
+                if (this.currAnimation.loop) {
+                    this.currAnimation.animTime %= this.currAnimation.totalDuration;
+                    this.currAnimation.currFrameIndex = 0;
+                } else {
+                    // Hold on the last frame instead of wrapping back to
+                    // frame 0 -- e.g. a death animation should stay on its
+                    // final frame once finished, not flash back to its
+                    // first frame for the last tick or two before the
+                    // creature is actually removed.
+                    this.currAnimation.animTime = this.currAnimation.totalDuration;
+                    this.currAnimation.currFrameIndex = this.currAnimation.frames.length - 1;
+                }
             }
             while (
                 this.currAnimation.animTime >
@@ -186,12 +202,14 @@ class Animation {
     currFrameIndex: number;
     animTime: number;
     totalDuration: number;
+    loop: boolean;
 
     constructor() {
         this.frames = [];
         this.currFrameIndex = 0;
         this.animTime = 0;
         this.totalDuration = 0;
+        this.loop = true;
     }
 
     clone(): Animation {
@@ -201,6 +219,7 @@ class Animation {
         const a = new Animation();
         a.frames = this.frames;
         a.totalDuration = this.totalDuration;
+        a.loop = this.loop;
         return a;
     }
 }

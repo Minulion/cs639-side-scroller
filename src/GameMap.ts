@@ -4,6 +4,7 @@ import { Sprite } from "./sprites/Sprite.js";
 import { GRAVITY } from "./GameManager.js";
 import { Creature, CreatureState } from "./sprites/Creature.js";
 import { Heart, Music, PowerUp, Star } from "./sprites/PowerUp.js";
+import { Explosion } from "./sprites/Explosion.js";
 import { Settings } from "./Settings.js";
 
 export function computeParallaxX(
@@ -147,19 +148,32 @@ export class GameMap {
             }
         }
 
-        image(
-            this.player.getImage(),
-            Math.trunc(Math.trunc(position.x) + offsetX),
-            Math.trunc(Math.trunc(position.y) + offsetY + this.player.getDrawOffsetY())
-        );
+        // An exploding-on-death player/caveman disappears entirely once
+        // dying -- the separate Explosion sprite (in this.sprites) is what
+        // plays at their old position instead.
+        const playerExploding =
+            this.player.explodesOnDeath && this.player.getState() != CreatureState.NORMAL;
+        if (!playerExploding) {
+            image(
+                this.player.getImage(),
+                Math.trunc(Math.trunc(position.x) + offsetX),
+                Math.trunc(Math.trunc(position.y) + offsetY + this.player.getDrawOffsetY())
+            );
+        }
 
         this.sprites.forEach((sprite) => {
             const p = sprite.getPosition();
-            image(
-                sprite.getImage(),
-                Math.trunc(Math.trunc(p.x) + offsetX),
-                Math.trunc(Math.trunc(p.y) + offsetY + sprite.getDrawOffsetY())
-            );
+            const hiddenWhileExploding =
+                sprite instanceof Creature &&
+                sprite.explodesOnDeath &&
+                sprite.getState() != CreatureState.NORMAL;
+            if (!hiddenWhileExploding) {
+                image(
+                    sprite.getImage(),
+                    Math.trunc(Math.trunc(p.x) + offsetX),
+                    Math.trunc(Math.trunc(p.y) + offsetY + sprite.getDrawOffsetY())
+                );
+            }
             if (sprite instanceof Creature && p.x + offsetX > 0 && p.x + offsetX < myW) {
                 sprite.wakeUp();
             }
@@ -204,28 +218,46 @@ export class GameMap {
             if (s instanceof Creature) {
                 if (isFalling) {
                     // Stomp kill: bounce off the top.
-                    s.setState(CreatureState.DYING);
+                    const pos = s.getPosition();
+                    this.killCreature(s);
                     if (this.settings.playEvents) {
                         this.boop.play();
                     }
-                    const pos = s.getPosition();
                     p.setPosition(p.getPosition().x, pos.y - p.getImage().height);
                     p.jump(true);
                 } else if (p.isDashing()) {
                     // Dash kill: destroys on contact from any direction, no
                     // bounce/reposition -- the player just powers through
                     // and keeps their dash trajectory.
-                    s.setState(CreatureState.DYING);
+                    this.killCreature(s);
                     if (this.settings.playEvents) {
                         this.boop.play();
                     }
                 } else {
-                    p.setState(CreatureState.DYING);
+                    this.killCreature(p);
                 }
             } else if (s instanceof PowerUp) {
                 this.acquirePowerUp(s);
             }
         }
+    }
+
+    // Transitions a creature to DYING, and if it has a deathEffect (an
+    // "Explosion"-type resource name -- "explosion" for player/caveman,
+    // "bugjuice" for grub/fly), spawns a standalone copy of it at the
+    // creature's current position to play there (see Creature.deathEffect).
+    killCreature(c: Creature) {
+        const pos = c.getPosition();
+        c.setState(CreatureState.DYING);
+        if (c.deathEffect) {
+            this.spawnEffect(c.deathEffect, pos.x, pos.y);
+        }
+    }
+
+    spawnEffect(resourceName: string, x: number, y: number) {
+        const effect = this.resources.get(resourceName).clone();
+        effect.setPosition(x, y);
+        this.sprites.push(effect);
     }
 
     removeSprite(s: Sprite) {
@@ -268,6 +300,15 @@ export class GameMap {
     }
 
     updateSprite(s: Sprite) {
+        // Freeze physics entirely once dying/dead, but only for creatures
+        // that explode on death (player, caveman) -- they disappear and an
+        // Explosion plays in their place, so they shouldn't keep
+        // falling/colliding invisibly in the meantime. Ordinary enemies
+        // (grub, fly) are unaffected and keep tumbling through their own
+        // death animation exactly as before.
+        if (s instanceof Creature && s.explodesOnDeath && s.getState() != CreatureState.NORMAL) {
+            return;
+        }
         //update velocity due to gravity
         const oldVel = s.getVelocity();
         const newPos = s.getPosition().copy();
@@ -333,6 +374,11 @@ export class GameMap {
                 }
             } else if (sprite instanceof PowerUp) {
                 sprite.update(deltaTime);
+            } else if (sprite instanceof Explosion) {
+                sprite.update(deltaTime);
+                if (sprite.isFinished()) {
+                    obj.splice(index, 1);
+                }
             }
         });
     }

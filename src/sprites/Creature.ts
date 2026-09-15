@@ -15,17 +15,37 @@ export class Creature extends Sprite {
 
     state: CreatureState;
     stateTime: number;
+    // Name of an "Explosion"-type resource (see GameMap.killCreature()) to
+    // spawn in place at the moment this creature dies, or null for none.
+    // Set per-resource in ResourceManager: "player"/"caveman" use
+    // "explosion", "grub"/"fly" use "bugjuice". This is independent of
+    // explodesOnDeath below -- a death effect can be spawned alongside a
+    // creature that keeps living out its own death animation (bugjuice),
+    // not only ones that disappear (explosion).
+    deathEffect: string;
+    // When true (set per-resource in ResourceManager, e.g. for "player" and
+    // "caveman"), this creature disappears entirely once dying -- physics
+    // freezes on it (see GameMap.updateSprite()) and it isn't drawn (see
+    // GameMap.draw()) -- rather than continuing to fall/collide/animate.
+    // Ordinary creatures (grub, fly) leave this false and keep
+    // falling/tumbling through their own flipped death animation exactly
+    // as before, regardless of whether they also spawn a deathEffect.
+    explodesOnDeath: boolean;
 
     constructor() {
         super();
         this.state = CreatureState.NORMAL;
         this.stateTime = 0;
+        this.deathEffect = null;
+        this.explodesOnDeath = false;
     }
 
     clone() {
         const s = super.clone();
         s.state = this.state;
         s.stateTime = this.stateTime;
+        s.deathEffect = this.deathEffect;
+        s.explodesOnDeath = this.explodesOnDeath;
         return s;
     }
 

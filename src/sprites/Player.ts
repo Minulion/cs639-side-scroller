@@ -1,4 +1,4 @@
-import { Creature } from "./Creature.js";
+import { Creature, CreatureState } from "./Creature.js";
 
 export class Player extends Creature {
     MAX_SPEED: number;
@@ -137,6 +137,17 @@ export class Player extends Creature {
     }
 
     getDesiredAnimation(): string {
+        if (this.getState() != CreatureState.NORMAL) {
+            // Dying/dead: Creature.setState() already switched to
+            // deadLeft/deadRight once, and the death animation should just
+            // play out undisturbed. Without this, since setState() also
+            // zeroes velocity, a player that died mid-air stays !onGround
+            // (nothing resolves that once physics freezes on death -- see
+            // GameMap.updateSprite()) and this method would otherwise keep
+            // re-asserting jumpUp/jumpDown over the death animation every
+            // single frame, so it would never actually be seen.
+            return "";
+        }
         if (this.isDashing()) {
             // Overrides jump/idle/walk for the dash's whole duration; once
             // it ends this check simply stops matching and the very next
@@ -157,10 +168,10 @@ export class Player extends Creature {
             return this.facing < 0 ? "jumpDownLeft" : "jumpDownRight";
         }
         // Creature.getDesiredAnimation() returns "" when standing still
-        // (meaning "leave the current animation alone"). No dedicated
-        // dash art exists right now (see resources.json), so just fall
-        // back to a facing-appropriate pose from the base left/right
-        // animations instead of leaving it frozen on whatever was showing.
+        // (meaning "leave the current animation alone"), which would
+        // otherwise leave the player frozen on a jump/dash frame forever
+        // after landing/stopping. Fall back to a facing-appropriate idle
+        // pose instead.
         return super.getDesiredAnimation() || (this.facing < 0 ? "left" : "right");
     }
 
@@ -209,6 +220,8 @@ export class Player extends Creature {
         p.MAX_SPEED = this.MAX_SPEED;
         p.drawOffsetY = this.drawOffsetY;
         p.airborneStreak = this.airborneStreak;
+        p.deathEffect = this.deathEffect;
+        p.explodesOnDeath = this.explodesOnDeath;
         return p;
     }
 }
