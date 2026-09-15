@@ -150,7 +150,7 @@ export class GameMap {
         image(
             this.player.getImage(),
             Math.trunc(Math.trunc(position.x) + offsetX),
-            Math.trunc(Math.trunc(position.y) + offsetY)
+            Math.trunc(Math.trunc(position.y) + offsetY + this.player.getDrawOffsetY())
         );
 
         this.sprites.forEach((sprite) => {
@@ -158,7 +158,7 @@ export class GameMap {
             image(
                 sprite.getImage(),
                 Math.trunc(Math.trunc(p.x) + offsetX),
-                Math.trunc(Math.trunc(p.y) + offsetY)
+                Math.trunc(Math.trunc(p.y) + offsetY + sprite.getDrawOffsetY())
             );
             if (sprite instanceof Creature && p.x + offsetX > 0 && p.x + offsetX < myW) {
                 sprite.wakeUp();
@@ -197,12 +197,13 @@ export class GameMap {
         return null;
     }
 
-    checkPlayerCollision(p: Player, canKill: boolean) {
+    checkPlayerCollision(p: Player, isFalling: boolean) {
         if (p.getState() != CreatureState.NORMAL) return;
         const s = this.getSpriteCollision(p);
         if (s) {
             if (s instanceof Creature) {
-                if (canKill) {
+                if (isFalling) {
+                    // Stomp kill: bounce off the top.
                     s.setState(CreatureState.DYING);
                     if (this.settings.playEvents) {
                         this.boop.play();
@@ -210,6 +211,14 @@ export class GameMap {
                     const pos = s.getPosition();
                     p.setPosition(p.getPosition().x, pos.y - p.getImage().height);
                     p.jump(true);
+                } else if (p.isDashing()) {
+                    // Dash kill: destroys on contact from any direction, no
+                    // bounce/reposition -- the player just powers through
+                    // and keeps their dash trajectory.
+                    s.setState(CreatureState.DYING);
+                    if (this.settings.playEvents) {
+                        this.boop.play();
+                    }
                 } else {
                     p.setState(CreatureState.DYING);
                 }
@@ -246,8 +255,8 @@ export class GameMap {
         const toY = Math.max(oldPos.y, newPos.y);
         const fromTileX = this.pixelsToTiles(fromX);
         const fromTileY = this.pixelsToTiles(fromY);
-        const toTileX = this.pixelsToTiles(toX + s.getImage().width - 1);
-        const toTileY = this.pixelsToTiles(toY + s.getImage().height - 1);
+        const toTileX = this.pixelsToTiles(toX + s.getCollisionWidth() - 1);
+        const toTileY = this.pixelsToTiles(toY + s.getCollisionHeight() - 1);
         for (let x = fromTileX; x <= toTileX; x++) {
             for (let y = fromTileY; y <= toTileY; y++) {
                 if (x < 0 || x >= this.tiles.length || this.tiles[x][y]) {
@@ -275,7 +284,7 @@ export class GameMap {
         if (point) {
             if (oldVel.x > 0) {
                 //moving to the right
-                newPos.x = this.tilesToPixels(point.x) - s.getImage().width;
+                newPos.x = this.tilesToPixels(point.x) - s.getCollisionWidth();
             } else if (oldVel.x < 0) {
                 //moving to the left
                 newPos.x = this.tilesToPixels(point.x + 1);
@@ -293,7 +302,7 @@ export class GameMap {
         point = this.getTileCollision(s, newPos);
         if (point) {
             if (oldVel.y > 0) {
-                newPos.y = this.tilesToPixels(point.y) - s.getImage().height;
+                newPos.y = this.tilesToPixels(point.y) - s.getCollisionHeight();
             } else if (oldVel.y < 0) {
                 newPos.y = this.tilesToPixels(point.y + 1);
             }

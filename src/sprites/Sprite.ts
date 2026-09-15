@@ -11,6 +11,12 @@ export class Sprite {
     protected animations: AnimPair;
     protected currAnimName: string;
     protected currAnimation: Animation;
+    // Purely cosmetic vertical offset applied only when drawing (see
+    // GameMap.draw()) -- lets a sprite's art be nudged relative to its
+    // hitbox/collision position without editing the image files or
+    // affecting physics. Applies equally to every animation (including
+    // flipped/dead poses), unlike baking an offset into the image itself.
+    drawOffsetY: number;
 
     constructor() {
         this.animations = {};
@@ -19,6 +25,7 @@ export class Sprite {
         this.velocity = createVector(0, 0);
         this.currAnimName = "default";
         this.currAnimation = this.animations["default"];
+        this.drawOffsetY = 0;
     }
 
     collideVertical() {
@@ -47,6 +54,7 @@ export class Sprite {
         }
         s.currAnimName = this.currAnimName;
         s.currAnimation = s.animations[s.currAnimName];
+        s.drawOffsetY = this.drawOffsetY;
         return s;
     }
 
@@ -136,6 +144,36 @@ export class Sprite {
             return this.currAnimation.frames[this.currAnimation.currFrameIndex].image;
         }
         return null;
+    }
+
+    // GameMap's tile-collision math uses these (not getImage() directly) to
+    // size the sprite's hitbox. Defaulting to the current frame's actual
+    // size preserves existing behavior for every sprite that doesn't
+    // override this. Player does override it, since its cosmetic frames
+    // (e.g. the dash pose's wider energy-trail art) vary in size while the
+    // character's actual footprint doesn't -- using the raw image size
+    // there would size/reposition the hitbox differently per animation
+    // frame, causing a visible snap when a frame with a different width
+    // collides with a wall and the animation then changes.
+    getCollisionWidth(): number {
+        return this.getImage().width;
+    }
+
+    getCollisionHeight(): number {
+        return this.getImage().height;
+    }
+
+    // Where GameMap.draw() should draw this sprite's current frame,
+    // relative to its physics position (the top of its collision box).
+    // Bottom-aligns the actual image within the declared collision height
+    // -- necessary whenever a cosmetic frame's real size differs from
+    // getCollisionHeight() (e.g. Player's dash pose, whose canvas is
+    // shorter than the standard 64px collision box: drawing it top-aligned
+    // like every other frame would leave a gap under its feet and make it
+    // look like it's floating) -- then applies drawOffsetY on top for any
+    // further per-sprite margin adjustment.
+    getDrawOffsetY(): number {
+        return this.getCollisionHeight() - this.getImage().height + this.drawOffsetY;
     }
 }
 

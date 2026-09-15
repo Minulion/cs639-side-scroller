@@ -161,6 +161,17 @@ export class ResourceManager {
                 throw new Error();
             }
         }
+        // Some art has empty margin below its feet within its frame, so
+        // nudge only these named sprites down at draw time (see
+        // Sprite.drawOffsetY) rather than baking an offset into the image
+        // files.
+        if (spriteName === "player") {
+            s.drawOffsetY = 3;
+        } else if (spriteName === "caveman") {
+            s.drawOffsetY = 3;
+        } else if (spriteName === "grub") {
+            s.drawOffsetY = 3;
+        }
         for (const animName in anims) {
             if (Object.prototype.hasOwnProperty.call(anims, animName)) {
                 const frames = anims[animName];
@@ -214,6 +225,15 @@ export class ResourceManager {
     divideUpImage(img: p5.Image, rows: number, cols: number): p5.Image[] {
         const images: p5.Image[] = [];
         const canvas = createGraphics(img.width / cols, img.height / rows);
+        // Force density 1 so canvas.get() below returns images whose .pixels
+        // array is exactly width*height*4 (matching a normal loadImage()'d
+        // PNG). Without this, on a HiDPI display the buffer inherits the
+        // sketch's real pixel density, and mirror()/flip() -- which index
+        // .pixels using only the logical width/height -- read/write
+        // completely wrong offsets, producing visible pixel noise. Every
+        // other sprite only ever runs mirror()/flip() on loadImage() output
+        // (already density 1), so this path is the only one affected.
+        canvas.pixelDensity(1);
         for (let rowIndex = 0; rowIndex < img.height; rowIndex += img.height / rows) {
             for (let colIndex = 0; colIndex < img.width; colIndex += img.width / cols) {
                 canvas.image(
@@ -347,7 +367,7 @@ export class ResourceManager {
         img.loadPixels();
         const img2 = createImage(img.width, img.height);
         img2.loadPixels();
-        let newRow = img2.height;
+        let newRow = img2.height - 1;
         for (let row = 0; row < img.height; row++) {
             for (let col = 0; col < img.width; col++) {
                 const startIndex = (row * img.width + col) * 4;
