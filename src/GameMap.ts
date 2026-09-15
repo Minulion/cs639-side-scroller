@@ -192,13 +192,17 @@ export class GameMap {
         pos1.y = Math.round(pos1.y);
         pos2.x = Math.round(pos2.x);
         pos2.y = Math.round(pos2.y);
-        const i1 = s1.getImage();
-        const i2 = s2.getImage();
+        // Use the collision box (same as tile collision/ground-snapping),
+        // not the raw image size: Grub/caveman fix their collision height
+        // at 64px while their cropped art frames are much shorter and
+        // drawn bottom-aligned via drawOffsetY, so getImage().height here
+        // would test overlap against a box floating above the creature's
+        // actual drawn position instead of the creature itself.
         const val =
-            pos1.x < pos2.x + i2.width &&
-            pos2.x < pos1.x + i1.width &&
-            pos1.y < pos2.y + i2.height &&
-            pos2.y < pos1.y + i1.height;
+            pos1.x < pos2.x + s2.getCollisionWidth() &&
+            pos2.x < pos1.x + s1.getCollisionWidth() &&
+            pos1.y < pos2.y + s2.getCollisionHeight() &&
+            pos2.y < pos1.y + s1.getCollisionHeight();
         return val;
     }
 
@@ -333,12 +337,8 @@ export class GameMap {
             s.collideHorizontal();
         }
         s.setPosition(newPos.x, newPos.y);
-        if (s instanceof Player) {
-            this.checkPlayerCollision(s as Player, false);
-        }
 
         //now update the y part of the position
-        const oldY = newPos.y;
         newPos.y = newPos.y + oldVel.y * deltaTime;
         point = this.getTileCollision(s, newPos);
         if (point) {
@@ -350,8 +350,34 @@ export class GameMap {
             s.collideVertical();
         }
         s.setPosition(newPos.x, newPos.y);
+        // Checked once, after both axes are fully resolved for the frame
+        // (not once per axis, and not from a same-frame position/velocity
+        // delta). Two problems ruled out an axis-order or single-frame-delta
+        // check here:
+        // 1. Checking right after the horizontal step (with a hardcoded
+        //    isFalling=false) tested overlap against the sprite's position
+        //    from *before* this frame's vertical movement. If a tall,
+        //    correctly-sized creature (see isCollision()/getCollisionHeight())
+        //    already vertically overlapped the player from a prior frame --
+        //    common during a running jump's shallow diagonal approach --
+        //    while horizontal alignment only completed on this frame, that
+        //    earlier check fired first and force-classified a genuine
+        //    in-progress stomp as "walked into it," killing the player.
+        // 2. Even checking once, comparing this single frame's y before/after
+        //    isn't reliable either: gravity is added every frame regardless
+        //    of onGround, so a player resting motionlessly still nudges down
+        //    a fraction of a pixel before the next frame's tile collision
+        //    snaps it back -- the same one-frame ground flicker documented on
+        //    Player.airborneStreak. Reusing that already-debounced signal
+        //    (instead of re-deriving falling state from a single frame's
+        //    motion) avoids misreading a stationary side-bump as a stomp on
+        //    whichever frame happens to catch that flicker.
         if (s instanceof Player) {
-            this.checkPlayerCollision(s as Player, oldY < newPos.y);
+            const player = s as Player;
+            this.checkPlayerCollision(
+                player,
+                player.airborneStreak >= Player.AIRBORNE_ANIM_MIN_STREAK
+            );
         }
     }
 
