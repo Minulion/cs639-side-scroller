@@ -1,16 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { GameMap } from "../src/GameMap";
 import { Player } from "../src/sprites/Player";
 import { Grub, CreatureState } from "../src/sprites/Creature";
 
 // Builds a GameMap without going through the constructor/initialize() (which
 // needs a real, loaded ResourceManager) -- updateSprite()/checkPlayerCollision()
-// only touch tiles/tile_size/settings/sprites, all supplied manually here.
+// only touch tiles/tile_size/soundManager/sprites, all supplied manually here.
 function makeMap(sprites: Grub[]): any {
     const map: any = Object.create(GameMap.prototype);
     map.tiles = Array.from({ length: 50 }, () => [] as unknown[]); // wide open air, no walls/ground
     map.tile_size = 64;
-    map.settings = { playEvents: false };
+    map.soundManager = { playEvent: vi.fn(), nextSong: vi.fn() };
     map.sprites = sprites;
     return map;
 }

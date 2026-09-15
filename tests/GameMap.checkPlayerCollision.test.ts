@@ -1,81 +1,155 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { GameMap } from "../src/GameMap";
 import { Player } from "../src/sprites/Player";
 import { Grub, CreatureState } from "../src/sprites/Creature";
+import { Star } from "../src/sprites/PowerUp";
+import type { SoundManager } from "../src/SoundManager";
 
-// Standalone replica of GameMap.checkPlayerCollision's decision logic, for
-// testing without instantiating a real GameMap (which needs a browser-only
-// ResourceManager/Settings). `collided` stands in for getSpriteCollision(p).
-function checkPlayerCollision(
-    p: Player,
-    isFalling: boolean,
-    collided: Grub | null,
-    settings: { playEvents: boolean; boop: { play: () => void } }
-) {
-    if (p.getState() != CreatureState.NORMAL) return;
-    const s = collided;
-    if (s) {
-        if (isFalling) {
-            s.setState(CreatureState.DYING);
-            if (settings.playEvents) settings.boop.play();
-            const pos = s.getPosition();
-            p.setPosition(p.getPosition().x, pos.y - p.getImage().height);
-            p.jump(true);
-        } else if (p.isDashing()) {
-            s.setState(CreatureState.DYING);
-            if (settings.playEvents) settings.boop.play();
-        } else {
-            p.setState(CreatureState.DYING);
-        }
-    }
+// Same Object.create(GameMap.prototype) technique as the other GameMap test
+// files. checkPlayerCollision() only reads/writes this.sprites, this.player
+// (indirectly, via the passed-in Player), and this.soundManager (all sound
+// playback routes through it now), so those are the only fields hand-wired
+// here.
+function makeGameMap() {
+    const map = Object.create(GameMap.prototype) as GameMap;
+    map.sprites = [];
+    map.soundManager = { playEvent: vi.fn(), nextSong: vi.fn() } as unknown as SoundManager;
+    return map;
 }
 
-function makeGrub(y: number): Grub {
-    const grub = new Grub();
-    grub.setPosition(50, y);
-    (grub as any).getImage = () => ({ width: 64, height: 64 });
-    return grub;
+function withMockImage<T extends { getImage: () => p5.Image }>(
+    sprite: T,
+    width: number,
+    height: number
+): T {
+    (sprite as any).getImage = () => ({ width, height });
+    return sprite;
 }
 
-describe("GameMap.checkPlayerCollision()", () => {
-    let player: Player;
-    let settings: { playEvents: boolean; boop: { play: ReturnType<typeof vi.fn> } };
+describe("GameMap.checkPlayerCollision() with an overlapping Creature and PowerUp at the same spot", () => {
+    it("landing on top (isFalling=true) kills the creature AND collects the powerup, in the same call", () => {
+        const map = makeGameMap();
+        const player = withMockImage(new Player(), 16, 16);
+        player.setPosition(300, 100);
 
-    beforeEach(() => {
-        player = new Player();
-        (player as any).getImage = () => ({ width: 64, height: 64 });
-        settings = { playEvents: true, boop: { play: vi.fn() } };
-    });
+        const grub = withMockImage(new Grub(), 16, 16);
+        grub.setPosition(300, 100);
+        const star = withMockImage(new Star(), 16, 16);
+        star.setPosition(300, 100);
+        // Array order matters for the bug this test guards against - put the
+        // powerup first so the old first-match-only logic would have masked
+        // the creature entirely.
+        map.sprites.push(star, grub);
 
-    it("stomp kill (isFalling=true) bounces the player regardless of dashing", () => {
-        const grub = makeGrub(200);
-        const jumpSpy = vi.spyOn(player, "jump");
-        checkPlayerCollision(player, true, grub, settings);
+        map.checkPlayerCollision(player, true);
+
         expect(grub.getState()).toBe(CreatureState.DYING);
-        expect(jumpSpy).toHaveBeenCalledWith(true);
-        expect(player.getState()).toBe(CreatureState.NORMAL);
-        expect(settings.boop.play).toHaveBeenCalledOnce();
+        expect(map.sprites).not.toContain(star);
+        expect(map.soundManager.playEvent).toHaveBeenCalledWith("prize");
+        expect(player.getState()).toBe(CreatureState.NORMAL); // stomping, not dying
     });
 
-    it("dash kill (isFalling=false, isDashing=true) destroys the enemy without bouncing", () => {
+    it("landing on top still works when the creature happens to be first in the sprites array", () => {
+        const map = makeGameMap();
+        const player = withMockImage(new Player(), 16, 16);
+        player.setPosition(300, 100);
+
+        const grub = withMockImage(new Grub(), 16, 16);
+        grub.setPosition(300, 100);
+        const star = withMockImage(new Star(), 16, 16);
+        star.setPosition(300, 100);
+        map.sprites.push(grub, star);
+
+        map.checkPlayerCollision(player, true);
+
+        expect(grub.getState()).toBe(CreatureState.DYING);
+        expect(map.sprites).not.toContain(star);
+    });
+
+    it("touching from the side (isFalling=false) still kills the player, regardless of a powerup also overlapping", () => {
+        const map = makeGameMap();
+        const player = withMockImage(new Player(), 16, 16);
+        player.setPosition(300, 100);
+
+        const grub = withMockImage(new Grub(), 16, 16);
+        grub.setPosition(300, 100);
+        const star = withMockImage(new Star(), 16, 16);
+        star.setPosition(300, 100);
+        map.sprites.push(star, grub);
+
+        map.checkPlayerCollision(player, false);
+
+        expect(player.getState()).toBe(CreatureState.DYING);
+        expect(grub.getState()).toBe(CreatureState.NORMAL); // not a stomp - the creature doesn't die
+    });
+
+    it("a lone powerup with no creature overlap is still collected as before", () => {
+        const map = makeGameMap();
+        const player = withMockImage(new Player(), 16, 16);
+        player.setPosition(300, 100);
+        const star = withMockImage(new Star(), 16, 16);
+        star.setPosition(300, 100);
+        map.sprites.push(star);
+
+        map.checkPlayerCollision(player, false);
+
+        expect(map.sprites).not.toContain(star);
+        expect(player.getState()).toBe(CreatureState.NORMAL);
+    });
+
+    it("a lone NORMAL creature touched from the side is still fatal as before (regression)", () => {
+        const map = makeGameMap();
+        const player = withMockImage(new Player(), 16, 16);
+        player.setPosition(300, 100);
+        const grub = withMockImage(new Grub(), 16, 16);
+        grub.setPosition(300, 100);
+        map.sprites.push(grub);
+
+        map.checkPlayerCollision(player, false);
+
+        expect(player.getState()).toBe(CreatureState.DYING);
+    });
+});
+
+describe("GameMap.checkPlayerCollision() dash kill", () => {
+    it("dashing into a creature (isFalling=false, isDashing=true) destroys it without bouncing or killing the player", () => {
+        const map = makeGameMap();
+        const player = withMockImage(new Player(), 16, 16);
+        player.setPosition(300, 100);
         player.dash();
-        const grub = makeGrub(150); // same height as player, not "falling onto" it
         const jumpSpy = vi.spyOn(player, "jump");
-        checkPlayerCollision(player, false, grub, settings);
+
+        const grub = withMockImage(new Grub(), 16, 16);
+        grub.setPosition(300, 100);
+        map.sprites.push(grub);
+
+        map.checkPlayerCollision(player, false);
+
         expect(grub.getState()).toBe(CreatureState.DYING);
         expect(jumpSpy).not.toHaveBeenCalled();
         expect(player.getState()).toBe(CreatureState.NORMAL); // player survives, keeps dashing
-        expect(settings.boop.play).toHaveBeenCalledOnce();
+        expect(map.soundManager.playEvent).toHaveBeenCalledWith("boop2");
     });
 
-    it("plain horizontal touch (isFalling=false, not dashing) kills the player", () => {
-        const grub = makeGrub(150);
-        checkPlayerCollision(player, false, grub, settings);
-        expect(player.getState()).toBe(CreatureState.DYING);
-        expect(grub.getState()).toBe(CreatureState.NORMAL); // enemy unaffected
-    });
+    it("a dash kill still spawns the creature's death effect, same as a stomp kill", () => {
+        // Regression guard for the merge with main's fire-ability branch:
+        // checkPlayerCollision's dash-kill branch must go through
+        // GameMap.killCreature() (not a bare setState(DYING)) so grub/fly
+        // still spawn their bugjuice splat when dashed through, not just
+        // when stomped.
+        const map = makeGameMap();
+        const player = withMockImage(new Player(), 16, 16);
+        player.setPosition(300, 100);
+        player.dash();
 
-    it("no collision is a no-op", () => {
-        checkPlayerCollision(player, false, null, settings);
-        expect(player.getState()).toBe(CreatureState.NORMAL);
+        const grub = withMockImage(new Grub(), 16, 16);
+        grub.setPosition(300, 100);
+        grub.deathEffect = "bugjuice";
+        map.sprites.push(grub);
+
+        const spawnSpy = vi.spyOn(map, "spawnEffect").mockImplementation(() => {});
+        map.checkPlayerCollision(player, false);
+
+        expect(spawnSpy).toHaveBeenCalledWith("bugjuice", 300, 100);
     });
 });

@@ -32,6 +32,10 @@ export class Player extends Creature {
     // should track the character's actual footprint, not that cosmetic art
     // size -- see Sprite.getCollisionWidth/getCollisionHeight.
     static readonly COLLISION_SIZE = 64;
+    FIRE_ABILITY_DURATION: number;
+    FIRE_COOLDOWN: number;
+    fireAbilityTimer: number; // ms remaining of the FireOrb buff, 0 = can't fire
+    fireCooldownTimer: number; // ms remaining before the next shot is allowed
 
     constructor() {
         super();
@@ -45,6 +49,10 @@ export class Player extends Creature {
         this.dashCooldownTimer = 0;
         this.facing = 1;
         this.airborneStreak = 0;
+        this.FIRE_ABILITY_DURATION = 10000;
+        this.FIRE_COOLDOWN = 300;
+        this.fireAbilityTimer = 0;
+        this.fireCooldownTimer = 0;
     }
 
     getCollisionWidth(): number {
@@ -78,7 +86,7 @@ export class Player extends Creature {
         }
     }
 
-    dash() {
+    dash(): boolean {
         if (this.dashCooldownTimer <= 0) {
             this.dashTimer = this.DASH_DURATION;
             this.dashCooldownTimer = this.DASH_COOLDOWN;
@@ -98,7 +106,9 @@ export class Player extends Creature {
                 this.setAnimation(dashAnim);
                 this.start();
             }
+            return true;
         }
+        return false;
     }
 
     isDashing(): boolean {
@@ -107,6 +117,22 @@ export class Player extends Creature {
 
     getDashVelocityX(): number {
         return this.facing * this.DASH_SPEED;
+    }
+
+    grantFireAbility() {
+        this.fireAbilityTimer = this.FIRE_ABILITY_DURATION;
+    }
+
+    hasFireAbility(): boolean {
+        return this.fireAbilityTimer > 0;
+    }
+
+    tryFire(): boolean {
+        if (this.hasFireAbility() && this.fireCooldownTimer <= 0) {
+            this.fireCooldownTimer = this.FIRE_COOLDOWN;
+            return true;
+        }
+        return false;
     }
 
     setVelocity(x: number, y: number) {
@@ -133,6 +159,12 @@ export class Player extends Creature {
         }
         if (this.dashCooldownTimer > 0) {
             this.dashCooldownTimer = Math.max(0, this.dashCooldownTimer - deltaTime);
+        }
+        if (this.fireAbilityTimer > 0) {
+            this.fireAbilityTimer = Math.max(0, this.fireAbilityTimer - deltaTime);
+        }
+        if (this.fireCooldownTimer > 0) {
+            this.fireCooldownTimer = Math.max(0, this.fireCooldownTimer - deltaTime);
         }
     }
 

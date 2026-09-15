@@ -29,6 +29,7 @@ export class GameManager {
     jump: GameAction;
     dash: GameAction;
     stop: GameAction;
+    fire: GameAction;
 
     constructor() {
         this.level = 0;
@@ -36,13 +37,14 @@ export class GameManager {
         this.gameState = STATE.Loading;
         this.resources = new ResourceManager("assets/assets.json");
         this.inputManager = new InputManager();
-        this.settings = new Settings();
         this.soundManager = new SoundManager();
+        this.settings = new Settings(this.soundManager);
         this.moveRight = new GameAction();
         this.moveLeft = new GameAction();
         this.jump = new GameAction();
         this.dash = new GameAction();
         this.stop = new GameAction();
+        this.fire = new GameAction();
     }
 
     draw() {
@@ -85,14 +87,48 @@ export class GameManager {
             case STATE.Loading: {
                 if (this.resources.isLoaded()) {
                     //now setup the first map
-                    this.map = new GameMap(this.level, this.resources, this.settings);
-                    this.settings.setMusic(this.resources.getLoad("music"));
+                    this.map = new GameMap(
+                        this.level,
+                        this.resources,
+                        this.settings,
+                        this.soundManager
+                    );
+                    this.soundManager.registerEvent("prize", this.resources.getLoad("prize"));
+                    this.soundManager.registerEvent("boop2", this.resources.getLoad("boop2"));
+                    this.soundManager.registerEvent("fireHit", this.resources.getLoad("fireHit"));
+                    this.soundManager.registerEvent(
+                        "heartPickup",
+                        this.resources.getLoad("heartPickup")
+                    );
+                    this.soundManager.registerEvent(
+                        "fireOrbPickup",
+                        this.resources.getLoad("fireOrbPickup")
+                    );
+                    this.soundManager.registerEvent(
+                        "fireLaunch",
+                        this.resources.getLoad("fireLaunch")
+                    );
+                    this.soundManager.registerEvent(
+                        "dashSound",
+                        this.resources.getLoad("dashSound")
+                    );
+                    // Static playlist, starting with "music" - Music powerup
+                    // pickups advance through it (see GameMap.acquirePowerUp()).
+                    this.soundManager.setMusicQueue([
+                        this.resources.getLoad("music"),
+                        this.resources.getLoad("cyberpunkMoonlightSonata"),
+                        this.resources.getLoad("battleThemeA"),
+                        this.resources.getLoad("catchTrack"),
+                        this.resources.getLoad("enchantedTiki86"),
+                        this.resources.getLoad("slimeHero"),
+                    ]);
                     //this.map.player.setVelocity(1,1);
                     this.inputManager.setGameAction(this.moveRight, RIGHT_ARROW);
                     this.inputManager.setGameAction(this.moveLeft, LEFT_ARROW);
                     this.inputManager.setGameAction(this.jump, 32);
                     this.inputManager.setGameAction(this.dash, 70); // F
                     this.inputManager.setGameAction(this.stop, UP_ARROW);
+                    this.inputManager.setGameAction(this.fire, 71); // G
                     this.oldState = STATE.Running;
                     this.gameState = STATE.Menu;
                 }
@@ -126,7 +162,14 @@ export class GameManager {
             this.map.player.jump(false);
         }
         if (this.dash.isBeginPress() && this.map.player.getState() == CreatureState.NORMAL) {
-            this.map.player.dash();
+            if (this.map.player.dash()) {
+                this.soundManager.playEvent("dashSound");
+            }
+        }
+        if (this.fire.isPressed() && this.map.player.getState() == CreatureState.NORMAL) {
+            if (this.map.player.tryFire()) {
+                this.map.spawnProjectile(this.map.player.facing);
+            }
         }
         // commented out so users don't crash game on live version
         // if (this.stop.isBeginPress()) {

@@ -1,6 +1,7 @@
 import { Player } from "./sprites/Player.js";
 import { Fly, Grub, Creature } from "./sprites/Creature.js";
-import { Heart, Music, PowerUp, Star } from "./sprites/PowerUp.js";
+import { FireOrb, Heart, Music, PowerUp, Star } from "./sprites/PowerUp.js";
+import { Projectile } from "./sprites/Projectile.js";
 import { Sprite } from "./sprites/Sprite.js";
 import { Explosion } from "./sprites/Explosion.js";
 
@@ -159,6 +160,14 @@ export class ResourceManager {
             }
             case "Explosion": {
                 s = new Explosion();
+                break;
+            }
+            case "FireOrb": {
+                s = new FireOrb();
+                break;
+            }
+            case "Projectile": {
+                s = new Projectile();
                 break;
             }
             default: {

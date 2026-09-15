@@ -3,9 +3,11 @@ import { ResourceManager } from "./ResourceManager.js";
 import { Sprite } from "./sprites/Sprite.js";
 import { GRAVITY } from "./GameManager.js";
 import { Creature, CreatureState } from "./sprites/Creature.js";
-import { Heart, Music, PowerUp, Star } from "./sprites/PowerUp.js";
+import { FireOrb, Heart, Music, PowerUp, Star } from "./sprites/PowerUp.js";
 import { Explosion } from "./sprites/Explosion.js";
+import { Projectile } from "./sprites/Projectile.js";
 import { Settings } from "./Settings.js";
+import { SoundManager } from "./SoundManager.js";
 
 export function computeParallaxX(
     offsetX: number,
@@ -21,6 +23,7 @@ export class GameMap {
     tiles: p5.Image[][];
     tile_size: number;
     sprites: Sprite[];
+    projectiles: Projectile[];
     player: Player;
     background: p5.Image[];
     width: number; //height and width in tiles
@@ -28,22 +31,26 @@ export class GameMap {
     level: number;
     resources: ResourceManager;
     settings: Settings;
-    prize: p5.SoundFile;
+    soundManager: SoundManager;
     music: p5.SoundFile;
-    boop: p5.SoundFile;
 
-    constructor(level: number, resources: ResourceManager, settings: Settings) {
+    constructor(
+        level: number,
+        resources: ResourceManager,
+        settings: Settings,
+        soundManager: SoundManager
+    ) {
         this.settings = settings;
+        this.soundManager = soundManager;
         this.level = level;
         this.resources = resources;
         this.initialize();
     }
 
     initialize() {
-        this.prize = this.resources.getLoad("prize");
         this.music = this.resources.getLoad("music");
-        this.boop = this.resources.getLoad("boop2");
         this.sprites = [];
+        this.projectiles = [];
         this.background = []; //this.resources.get("background");
         this.tile_size = this.resources.get("TILE_SIZE");
         const mappings = this.resources.get("mappings");
@@ -178,6 +185,15 @@ export class GameMap {
                 sprite.wakeUp();
             }
         });
+
+        this.projectiles.forEach((projectile) => {
+            const p = projectile.getPosition();
+            image(
+                projectile.getImage(),
+                Math.trunc(Math.trunc(p.x) + offsetX),
+                Math.trunc(Math.trunc(p.y) + offsetY)
+            );
+        });
     }
 
     isCollision(s1: Sprite, s2: Sprite): boolean {
@@ -206,27 +222,23 @@ export class GameMap {
         return val;
     }
 
-    getSpriteCollision(s: Sprite): Sprite {
-        for (const other of this.sprites) {
-            if (this.isCollision(s, other)) {
-                return other;
-            }
-        }
-        return null;
-    }
-
     checkPlayerCollision(p: Player, isFalling: boolean) {
         if (p.getState() != CreatureState.NORMAL) return;
-        const s = this.getSpriteCollision(p);
-        if (s) {
+        // Snapshot every sprite currently overlapping the player (not just
+        // the first match) so a Creature and a PowerUp that happen to
+        // overlap the same spot both resolve correctly and independently -
+        // otherwise whichever happened to come first in this.sprites could
+        // mask the other (e.g. a stomp-kill silently skipped because a
+        // PowerUp underneath was found first).
+        const overlapping = this.sprites.filter((s) => this.isCollision(p, s));
+        for (const s of overlapping) {
+            if (p.getState() != CreatureState.NORMAL) break; // player already died this call
             if (s instanceof Creature) {
                 if (isFalling) {
                     // Stomp kill: bounce off the top.
                     const pos = s.getPosition();
                     this.killCreature(s);
-                    if (this.settings.playEvents) {
-                        this.boop.play();
-                    }
+                    this.soundManager.playEvent("boop2");
                     p.setPosition(p.getPosition().x, pos.y - p.getImage().height);
                     p.jump(true);
                 } else if (p.isDashing()) {
@@ -234,9 +246,7 @@ export class GameMap {
                     // bounce/reposition -- the player just powers through
                     // and keeps their dash trajectory.
                     this.killCreature(s);
-                    if (this.settings.playEvents) {
-                        this.boop.play();
-                    }
+                    this.soundManager.playEvent("boop2");
                 } else {
                     this.killCreature(p);
                 }
@@ -271,16 +281,59 @@ export class GameMap {
 
     acquirePowerUp(p: PowerUp) {
         this.removeSprite(p);
-        if (p instanceof Star) {
-            if (this.settings.playEvents) {
-                this.prize.play();
-            }
+        if (p instanceof FireOrb) {
+            this.player.grantFireAbility();
+            this.soundManager.playEvent("fireOrbPickup");
+        } else if (p instanceof Star) {
+            this.soundManager.playEvent("prize");
         } else if (p instanceof Music) {
-            // no-op: music notes collected but have no effect yet
+            this.soundManager.nextSong();
         } else if (p instanceof Heart) {
+            this.soundManager.playEvent("heartPickup");
             this.level += 1;
             this.initialize();
         }
+    }
+
+    spawnProjectile(direction: number) {
+        const p = (this.resources.get("projectile") as Projectile).clone();
+        const playerPos = this.player.getPosition();
+        const playerImg = this.player.getImage();
+        const projImg = p.getImage();
+        const spawnX = direction > 0 ? playerPos.x + playerImg.width : playerPos.x - projImg.width;
+        const spawnY = playerPos.y + playerImg.height / 2 - projImg.height / 2;
+        p.setPosition(spawnX, spawnY);
+        p.setVelocity(direction * p.SPEED, 0);
+        this.projectiles.push(p);
+        this.soundManager.playEvent("fireLaunch");
+    }
+
+    updateProjectiles() {
+        // Collect removals and splice after the loop instead of mid-iteration
+        // (unlike the sprites.forEach cleanup above, which splices in place) -
+        // mutating the array being iterated can skip an adjacent element on
+        // the same tick.
+        const toRemove: Projectile[] = [];
+        this.projectiles.forEach((p) => {
+            this.updateSprite(p);
+            // isCollision() already excludes non-NORMAL Creatures, so no need
+            // to re-check state here.
+            const target = this.sprites.find(
+                (s) => s instanceof Creature && this.isCollision(p, s)
+            );
+            if (target) {
+                (target as Creature).setState(CreatureState.DYING);
+                this.soundManager.playEvent("fireHit");
+            }
+            p.update(deltaTime);
+            if (target || p.hitSomething || p.isExpired()) {
+                toRemove.push(p);
+            }
+        });
+        toRemove.forEach((p) => {
+            const i = this.projectiles.indexOf(p);
+            if (i > -1) this.projectiles.splice(i, 1);
+        });
     }
 
     getTileCollision(s: Sprite, newPos: p5.Vector) {
@@ -387,6 +440,11 @@ export class GameMap {
             return;
         }
         this.updateSprite(this.player); //moves sprite within the game
+        if (this.player.getPosition().y > this.tilesToPixels(this.height)) {
+            //fell out of the level; player is already off-screen, so skip DYING and reset immediately
+            this.initialize();
+            return;
+        }
         this.player.update(deltaTime); //updates the animation of the sprite
 
         this.sprites.forEach((sprite, index, obj) => {
@@ -407,5 +465,7 @@ export class GameMap {
                 }
             }
         });
+
+        this.updateProjectiles();
     }
 }
